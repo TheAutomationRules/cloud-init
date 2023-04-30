@@ -1,0 +1,82 @@
+#cloud-config
+ssh_authorized_keys:
+  - ${SSH_PUB_KEY}
+
+preserve_hostname: false
+hostname: ubuntu-cloudinit
+fqdn: ubuntu-cloudinit.local
+manage_etc_hosts: true
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - unzip
+
+groups:
+  - docker
+
+users:
+  - default
+
+disable_root: true
+
+system_info:
+  distro: ubuntu
+  default_user:
+    name: ubuntu
+    lock_passwd: True
+    gecos: Ubuntu
+    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video, docker]
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    shell: /bin/bash
+
+write_files:
+  - path: /home/ubuntu/test.txt
+    content: |
+      Test
+  - path: /etc/consul.d/consul-server.hcl
+    permissions: '0644'
+    owner: root:root
+    content: |
+      datacenter = "${DC}"
+      data_dir = "/data/Services/readWrite/consul/data"
+      ui_config{
+        enabled = true
+      }
+      server = true
+      bootstrap_expect=1
+      enable_script_checks = true
+      log_level = "INFO"
+      bind_addr = "0.0.0.0"
+      client_addr = "0.0.0.0"
+      advertise_addr = "127.0.0.1"
+  - path : /etc/systemd/system/consul.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Consul Server
+      Documentation=https://www.consul.io/docs/
+      Requires=network-online.target
+      After=network-online.target
+      ConditionFileNotEmpty=/etc/consul.d/consul-server.hcl
+
+      [Service]
+      WorkingDirectory=/etc/consul.d
+      ProtectHome=read-only
+      Restart=on-failures
+      ExecStart=consul agent -config-file=consul-server.hcl
+      ExecReload=/bin/kill -HUP
+      KillSignal=SIGTERM
+      
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - curl -sSL https://releases.hashicorp.com/consul/${VERSION}/consul_${VERSION}_linux_amd64.zip > consul.zip
+  - unzip consul.zip
+  - sudo install consul /usr/bin/consul
+  - sudo systemctl enable consul.service
+  - sudo systemctl start consul
+  - echo "Consul Server Finish!"
